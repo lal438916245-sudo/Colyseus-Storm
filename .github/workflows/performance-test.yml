@@ -24,7 +24,7 @@ jobs:
       - name: Checkout game server code
         uses: actions/checkout@v4
         with:
-          repository: lal438916245-sudo/colyseus-unity-demo
+          repository: lal438916245-sudo/colyseus-game-server
           path: game-server
 
       - name: Set up Node.js
