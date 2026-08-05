@@ -11,9 +11,26 @@ jobs:
   performance_test:
     runs-on: ubuntu-latest
 
+    services:
+      mongodb:
+        image: mongo:5.0
+        ports:
+          - 27017:27017
+
     steps:
-      - name: Checkout code
+      - name: Checkout pressure test code
         uses: actions/checkout@v4
+
+      - name: Checkout game server code
+        uses: actions/checkout@v4
+        with:
+          repository: lal438916245-sudo/colyseus-unity-demo
+          path: game-server
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,10 +45,39 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: game-server/Server/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('game-server/Server/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install Python dependencies
         run: |
-          echo "开始安装 Python 依赖..."
+          echo "安装 Python 依赖..."
           pip install -r requirements.txt
+
+      - name: Install Node.js dependencies
+        run: |
+          echo "安装 Node.js 依赖..."
+          cd game-server/Server
+          npm install
+
+      - name: Start game server
+        run: |
+          echo "启动 Colyseus 游戏服务端..."
+          cd game-server/Server
+          export DEMO_DATABASE="mongodb://localhost:27017/Colyseus_MMO_Demo"
+          npm start &
+          # 等待服务端启动
+          sleep 10
+          curl --retry 5 --retry-delay 2 http://localhost:2567 || echo "服务端可能还在启动中..."
+
+      - name: Verify connectivity
+        run: |
+          echo "验证连通性..."
+          python bot_poc.py
 
       - name: Run performance test
         run: |
