@@ -1,0 +1,34 @@
+# 1. 定义流水线的阶段 (Stages)
+stages:
+  - setup
+  - performance_test
+
+# 2. 定义全局镜像 (使用 Docker Executor)
+image: python:3.9-slim
+
+# 3. 准备环境阶段
+install_dependencies:
+  stage: setup
+  script:
+    - echo "开始安装 Python 依赖..."
+    - pip install -r requirements.txt
+  # 将安装好的环境缓存起来，加速后续任务
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/pip
+
+# 4. 核心压测执行阶段
+run_locust_test:
+  stage: performance_test
+  script:
+    - echo "启动无头压测模式，模拟 50人并发..."
+    # 使用无头模式执行 3 分钟，并生成 CSV 报告
+    - locust -f locustfile.py --headless -u 50 -r 10 --run-time 3m --csv=reports/colyseus_test_run
+  
+  # 5. 保存测试产物 (Artifacts)
+  artifacts:
+    when: always
+    paths:
+      - reports/ # 压测结束后，GitLab 会自动打包这个文件夹供你下载
+    expire_in: 1 week # 报告保留一周
