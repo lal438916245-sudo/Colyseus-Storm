@@ -158,8 +158,8 @@ def analyze_locust_data(history_file, stats_file, failures_file, output_dir="rep
 
 if __name__ == "__main__":
     analyze_locust_data(
-        history_file="colyseus_test_run_stats_history.csv",
-        stats_file="colyseus_test_run_stats.csv",
-        failures_file="colyseus_test_run_failures.csv",
+        history_file="reports/colyseus_test_run_stats_history.csv",
+        stats_file="reports/colyseus_test_run_stats.csv",
+        failures_file="reports/colyseus_test_run_failures.csv",
         output_dir="reports"
     )
