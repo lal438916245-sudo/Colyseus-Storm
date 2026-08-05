@@ -1,0 +1,52 @@
+name: Colyseus-Storm Performance Test
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  performance_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          echo "开始安装 Python 依赖..."
+          pip install -r requirements.txt
+
+      - name: Run performance test
+        run: |
+          echo "启动无头压测模式，模拟 50人并发..."
+          locust -f locustfile.py --headless -u 50 -r 10 --run-time 3m --csv=reports/colyseus_test_run
+
+      - name: Generate analysis report
+        run: |
+          echo "生成性能分析报告..."
+          python analyze_locust.py
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: colyseus-performance-reports
+          path: reports/
+          retention-days: 7
