@@ -9,13 +9,18 @@ on:
 
 jobs:
   performance_test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     services:
       mongodb:
         image: mongo:5.0
         ports:
           - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping:1})' --quiet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout pressure test code
@@ -30,7 +35,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '16'
+          node-version: '14'
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -48,8 +53,8 @@ jobs:
       - name: Cache npm
         uses: actions/cache@v4
         with:
-          path: game-server/Server/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('game-server/Server/package-lock.json') }}
+          path: game-server/colyseus-game-client/Server/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('game-server/colyseus-game-client/Server/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-npm-
 
@@ -61,18 +66,28 @@ jobs:
       - name: Install Node.js dependencies
         run: |
           echo "安装 Node.js 依赖..."
-          cd game-server/Server
-          npm install
+          cd game-server/colyseus-game-client/Server
+          npm install --legacy-peer-deps
+          ls -la
+
+      - name: Show server structure
+        run: |
+          echo "服务端目录结构："
+          ls -la game-server/colyseus-game-client/Server/
 
       - name: Start game server
         run: |
           echo "启动 Colyseus 游戏服务端..."
-          cd game-server/Server
+          cd game-server/colyseus-game-client/Server
           export DEMO_DATABASE="mongodb://localhost:27017/Colyseus_MMO_Demo"
           npm start &
+          SERVER_PID=$!
+          echo "Server PID: $SERVER_PID"
           # 等待服务端启动
-          sleep 10
-          curl --retry 5 --retry-delay 2 http://localhost:2567 || echo "服务端可能还在启动中..."
+          sleep 20
+          curl --retry 5 --retry-delay 3 http://localhost:2567 || echo "服务端可能还在启动中..."
+          # 保持进程
+          wait $SERVER_PID
 
       - name: Verify connectivity
         run: |
