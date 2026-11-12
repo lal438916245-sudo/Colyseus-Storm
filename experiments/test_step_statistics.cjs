@@ -1,0 +1,15 @@
+"use strict";
+const assert = require("assert/strict");
+const { LagHistogram } = require("./step_statistics.cjs");
+const h = new LagHistogram(); assert.equal(h.percentile(.95), null);
+const values = Array.from({ length: 10000 }, (_, i) => ((i * 7919) % 30000) / 1000);
+for (const value of values) h.add(value);
+values.sort((a, b) => a - b);
+const exact = values[Math.ceil(.95 * values.length) - 1];
+assert(h.percentile(.95) >= exact);
+assert(h.percentile(.95) - exact <= .10000001);
+const repeated = new LagHistogram();
+for (let i = 0; i < 1000000; i++) repeated.add(4.51);
+assert.equal(repeated.bins.size, 1); assert.equal(repeated.count, 1000000);
+assert.equal(repeated.percentile(.95), 4.6);
+console.log("PASS: histogram preserves conservative percentile and bounded storage");

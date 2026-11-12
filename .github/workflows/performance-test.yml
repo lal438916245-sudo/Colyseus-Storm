@@ -1,4 +1,4 @@
-name: Colyseus-Storm Performance Test
+name: Colyseus-Storm closed-loop smoke
 
 on:
   push:
@@ -8,112 +8,56 @@ on:
   workflow_dispatch:
 
 jobs:
-  performance_test:
+  closed_loop:
     runs-on: ubuntu-22.04
-
+    timeout-minutes: 15
+    env:
+      STORM_SERVER_ROOT: ${{ github.workspace }}/game-server/colyseus-game-client/Server
+      STORM_NODE: node
     services:
       mongodb:
-        image: mongo:5.0
-        ports:
-          - 27017:27017
+        image: mongo:7.0
+        ports: ['27017:27017']
         options: >-
           --health-cmd "mongosh --eval 'db.adminCommand({ping:1})' --quiet"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+          --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
-      - name: Checkout pressure test code
-        uses: actions/checkout@v4
-
-      - name: Checkout game server code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: lal438916245-sudo/colyseus-game-server
           path: game-server
           submodules: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '18'
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          node-version: '24'
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: game-server/colyseus-game-client/Server/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('game-server/colyseus-game-client/Server/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
+          python-version: '3.13'
       - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Install matching game server dependencies
+        working-directory: game-server/colyseus-game-client/Server
+        run: npm ci --legacy-peer-deps
+      - name: Verify protocol, search, gate and resource helpers
         run: |
-          echo "安装 Python 依赖..."
-          pip install -r requirements.txt
-
-      - name: Install Node.js dependencies
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s experiments -p 'test_*.py' -v
+          node experiments/test_step_statistics.cjs
+          node experiments/test_close_observer.cjs
+      - name: One-command staircase smoke with strict exit gate
+        run: python storm.py verify --steps 2,4 --hold 10 --warmup 1 --workers 1 --profile-seconds 0 --output reports/ci-verify
+      - name: One-command strict lifecycle smoke
+        run: python storm.py locust --users 2 --spawn-rate 2 --run-time 15s --output reports/ci-locust
+      - name: Recover owned resources even after cancellation
+        if: always()
         run: |
-          echo "安装 Node.js 依赖..."
-          cd game-server/colyseus-game-client/Server
-          npm install --legacy-peer-deps
-          ls -la
-
-      - name: Show server structure
-        run: |
-          echo "服务端目录结构："
-          ls -la game-server/colyseus-game-client/Server/
-
-      - name: Start game server
-        run: |
-          echo "启动 Colyseus 游戏服务端..."
-          cd game-server/colyseus-game-client/Server
-          export DEMO_DATABASE="mongodb://localhost:27017/Colyseus_MMO_Demo"
-          nohup npm start > /tmp/server.log 2>&1 &
-          echo "Server PID: $!"
-          echo "等待服务端启动..."
-          for i in $(seq 1 30); do
-            if curl -s http://localhost:2567 > /dev/null 2>&1; then
-              echo "服务端启动成功！"
-              break
-            fi
-            echo "等待中... ($i/30)"
-            sleep 2
+          for run in reports/ci-verify reports/ci-locust; do
+            if [ -f "$run/ownership.json" ]; then python storm.py recover --output "$run"; fi
           done
-          echo "=== 服务端启动日志 ==="
-          cat /tmp/server.log || true
-
-      - name: Verify connectivity
-        run: |
-          echo "验证连通性..."
-          python bot_poc.py
-
-      - name: Run performance test
-        run: |
-          echo "启动无头压测模式，模拟 50人并发..."
-          locust -f locustfile.py --headless -u 50 -r 10 --run-time 3m --csv=reports/colyseus_test_run
-
-      - name: Generate analysis report
-        run: |
-          echo "生成性能分析报告..."
-          python analyze_locust.py
-
-      - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: colyseus-performance-reports
-          path: reports/
+          name: storm-closed-loop-evidence
+          path: reports/ci-*
           retention-days: 7
